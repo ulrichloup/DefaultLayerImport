@@ -3,17 +3,24 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileReader;
 import java.io.PrintWriter;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+
 import java.util.Date;
+import java.util.Properties;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,11 +32,11 @@ import java.util.regex.Pattern;
  * @author Ulrich Loup <ulrich.loup@dwd.de>
  * @version 2020-03-24
  */
-public class PolaraLayerImport implements ILayerImport {
+public class DefaultLayerImport implements ILayerImport {
 
     private static final TimeZone UTC_TIME_ZONE = TimeZone.getTimeZone("UTC");
-    private static final String UTC_PATTERN = "yyyyMMddHHmm";
-    private static Pattern pattern = Pattern.compile("[0-9]{12}");
+    private static final String UTC_DEFAULT_PATTERN = "yyyyMMddHHmm";
+    private static Pattern TIMEREGEX_DEFAULT_PATTERN = Pattern.compile("[0-9]{12}");
     private static String sNASPath = "/media/data/geoserver/imp/maps/jsonp/";	// alt
     
     private final static String FILEEXTENSION = ".tif";
@@ -47,26 +54,30 @@ public class PolaraLayerImport implements ILayerImport {
     private Date maxDate;
     private int maxFID;
     private long maxTime;
-
+    private Pattern timeregexPattern;
+    private String utc_pattern;
+    
     // Fuer das Instantiieren dieser Klasse mittels reflect im Observer
     // wird ein Leer-Konstruktor benÃ¶tigt
     // 
     // DB-Connection dort mit der set-Methode setzen !
-    public PolaraLayerImport() {
-        dateType = false;
-        maxDate = new Date(0);
-        maxFID = 0;
-        maxTime = -1l;
+    public DefaultLayerImport() {
+        this.dateType = false;
+        this.maxDate = new Date(0);
+        this.maxFID = 0;
+        this.maxTime = -1l;
+        this.timeregexPattern = TIMEREGEX_DEFAULT_PATTERN;
+        this.utc_pattern = UTC_DEFAULT_PATTERN;
     }
 
-//	public PolaraLayerImport(Connection dbconn) {
+//	public DefaultLayerImport(Connection dbconn) {
 //
 //		if (dbconn != null) {
 //			setConn(dbconn);
 //		}
 //	}
 //
-    public void dbImport(String[] args) throws ClassNotFoundException, SQLException, ParseException {
+    public void dbImport(String[] args) throws ClassNotFoundException, SQLException, ParseException, IOException {
 
         File[] list;
 
@@ -82,11 +93,12 @@ public class PolaraLayerImport implements ILayerImport {
             System.out.println("  -- proxy JSONP-Path falls JSONP-Datei erzeugt werden soll - sonst Leerstring!");
             System.exit(0);
         } else {
-            System.out.println("Starte PolaraLayerImportDB mit " + args[0]);
+            System.out.println("Starte Layer-Import mit " + args[0]);
         }
 
         setLayerName(args[0]);
-        setDir(args[1] + layerName);
+        setDir(args[1] + layerName);  // dataPath aus ImportObserver / observer.conf
+        loadTimeregex();
         setSeconds(args[2]);
         setTarget_date(args[3]);
         setDateType(args[4]);
@@ -149,17 +161,16 @@ public class PolaraLayerImport implements ILayerImport {
     }
 
     private File[] new_files() {
-
         // Erzeuge einen Filefilter fuer Dateien, deren Zeitstempel juenger als das Maximaldatum ist
         FileFilter fileFilter = new FileFilter() {
             public boolean accept(File file) {
                 final String filename = file.getName();
                 if ((filename.endsWith(FILEEXTENSION)) && (!filename.startsWith("."))) {
-                    final Matcher matcher = pattern.matcher(filename);
+                    final Matcher matcher = DefaultLayerImport.this.timeregexPattern.matcher(filename);
                     if (matcher.find()) {
                         final String match = matcher.group();
                         try {
-                            Date timestamp = getTimeFormat(UTC_PATTERN).parse(match);
+                            Date timestamp = getTimeFormat(DefaultLayerImport.this.utc_pattern).parse(match);
                             if (dateType) {
                                 long days = timestamp.getTime() / (24 * 3600 * 1000);
                                 timestamp = new Date(days * 24 * 3600 * 1000);
@@ -191,11 +202,11 @@ public class PolaraLayerImport implements ILayerImport {
             public boolean accept(File file) {
                 final String filename = file.getName();
                 if (filename.endsWith(FILEEXTENSION)) {
-                    final Matcher matcher = pattern.matcher(filename);
+                    final Matcher matcher = DefaultLayerImport.this.timeregexPattern.matcher(filename);
                     if (matcher.find()) {
                         final String match = matcher.group();
                         try {
-                            final Date timestamp = getTimeFormat(UTC_PATTERN).parse(match);
+                            final Date timestamp = getTimeFormat(DefaultLayerImport.this.utc_pattern).parse(match);
                             if (timestamp.before(new Date(maxDate.getTime() - seconds + 1))) {
                                 return true;
                             }
@@ -226,9 +237,9 @@ public class PolaraLayerImport implements ILayerImport {
             for (int i = 0; i < list.length; i++) {
                 filename = list[i].getName();
                 System.out.println("DB-Import: " + filename);
-                matcher = pattern.matcher(filename);
+                matcher = this.timeregexPattern.matcher(filename);
                 if (matcher.find()) {
-                    timestamp = getTimeFormat(UTC_PATTERN).parse(matcher.group());
+                    timestamp = getTimeFormat(this.utc_pattern).parse(matcher.group());
                     if (maxTime < timestamp.getTime()) {
                         maxTime = timestamp.getTime();
                     }
@@ -344,6 +355,33 @@ public class PolaraLayerImport implements ILayerImport {
         }
     }
 
+    /**
+     * Redefines {@link #timeregexPattern} by loading the file timeregex.properties from {@link #dir}.
+     */
+    private void loadTimeregex() throws FileNotFoundException, IOException {
+        File timeregexFile = new File(this.dir.getAbsolutePath() + File.separator + "timeregex.properties");
+        if (!timeregexFile.exists())
+            timeregexFile = new File(this.dir.getAbsolutePath() + File.separator + "regex.properties");
+        if (!timeregexFile.exists())
+            throw new FileNotFoundException("Sowohl timeregex.properties als auch regex.properties nicht gefunden in " + this.dir);
+        FileReader timeregexFileReader = new FileReader(timeregexFile);
+        Properties timeregexProperties = new Properties();
+        timeregexProperties.load(timeregexFileReader);
+        String timeregex = timeregexProperties.getProperty("regex").replaceFirst(",[a-z,A-Z]*=.*", "");
+        if (timeregex != null) {
+            if (timeregex.startsWith(".*"))
+                timeregex = timeregex.substring(2);
+            if (timeregex.endsWith(".*"))
+                timeregex = timeregex.substring(0,timeregex.length()-2);
+            this.timeregexPattern = Pattern.compile( timeregex );
+        }
+        else
+            this.timeregexPattern = TIMEREGEX_DEFAULT_PATTERN;
+        this.utc_pattern = timeregexProperties.getProperty("format", UTC_DEFAULT_PATTERN).replaceFirst(",[a-z,A-Z]*=.*", "");
+    }
+    
+    // public methods
+    
     public Connection getConn() {
         return conn;
     }
@@ -449,8 +487,7 @@ public class PolaraLayerImport implements ILayerImport {
     }
     
     /**
-     * Returns a {@link SimpleDateFormat} using the UTC_PATTERN and the UTC time
-     * zone
+     * Returns a {@link SimpleDateFormat} using the UTC_DEFAULT_PATTERN and the UTC time zone
      */
     public SimpleDateFormat getTimeFormat(String utc_pattern) {
         final SimpleDateFormat df = new SimpleDateFormat(utc_pattern);

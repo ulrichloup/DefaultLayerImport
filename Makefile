@@ -1,10 +1,10 @@
 JAVAC=/opt/webcc/java/bin/javac
 JAVA=/opt/webcc/java/bin/java
 
-all: PolaraLayerImport ImportObserver
+all: DefaultLayerImport ImportObserver
 
-PolaraLayerImport: PolaraLayerImport.java
-        $(JAVAC) PolaraLayerImport.java
+DefaultLayerImport: DefaultLayerImport.java
+        $(JAVAC) DefaultLayerImport.java
 
 ImportObserver: ImportObserver.java
         $(JAVAC) -Xlint:deprecation ImportObserver.java
