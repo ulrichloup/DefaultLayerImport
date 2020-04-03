@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.Properties;
 
 /**
  * Event-basierte Ueberwachung aller Import-Verzeichnisse einer Kategorie.
@@ -597,8 +598,14 @@ public class ImportObserver {
                                 String transformationCommand = transformationMap.get(layerName).replace("_sourceFile", file.getAbsolutePath());
                                 if (formatMap.containsKey(layerName)) {
                                     String filenameExtension = formatMap.get(layerName);
+                                    String importPath = importFile.getAbsolutePath();
                                     filenameExtension = filenameExtension.isBlank() ? "tif" : filenameExtension;
-                                    transformationCommand = transformationCommand.replace("_targetFile", importFile.getAbsolutePath().replaceAll("\\.[^.]*$", "." + filenameExtension));
+                                    Matcher mFilenameExtension = Pattern.compile("\\.[^.]*$").matcher(importPath);
+                                    if (mFilenameExtension.find())
+                                        importPath = importPath.substring(0, mFilenameExtension.start()) + "." + filenameExtension;
+                                    else
+                                        importPath = importPath + "." + filenameExtension;
+                                    transformationCommand = transformationCommand.replace("_targetFile", importPath);
                                 }
                                 else
                                     transformationCommand = transformationCommand.replace("_targetFile", importFile.getAbsolutePath());
@@ -608,7 +615,7 @@ public class ImportObserver {
                                 proc = Runtime.getRuntime().exec(command);
                                 logProcess(proc, layerName);
                                 if (!importFile.exists())
-                                    throw new Exception("folgende Datei konnte nicht transformiert werden: " + file.getName());
+                                    throw new Exception("TransformException - folgende Datei konnte nicht transformiert werden: " + file.getName());
                                 file.delete();
 
                             } else {
