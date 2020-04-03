@@ -605,10 +605,9 @@ public class ImportObserver {
                                         importPath = importPath.substring(0, mFilenameExtension.start()) + "." + filenameExtension;
                                     else
                                         importPath = importPath + "." + filenameExtension;
-                                    transformationCommand = transformationCommand.replace("_targetFile", importPath);
+                                    importFile = new File(importPath);
                                 }
-                                else
-                                    transformationCommand = transformationCommand.replace("_targetFile", importFile.getAbsolutePath());
+                                transformationCommand = transformationCommand.replace("_targetFile", importFile.getAbsolutePath());
                                 System.out.println("File " + file.getName() + " in " + dataPath + layerName + " transformieren...");
                                 System.out.println(transformationCommand);
                                 command = new String[]{"/bin/sh", "-c", transformationCommand};
