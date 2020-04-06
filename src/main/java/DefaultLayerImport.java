@@ -30,7 +30,6 @@ import java.util.regex.Pattern;
  * in a file-based data source.
  * 
  * @author Ulrich Loup <ulrich.loup@dwd.de>
- * @version 2020-03-24
  */
 public class DefaultLayerImport implements ILayerImport {
 
@@ -56,6 +55,7 @@ public class DefaultLayerImport implements ILayerImport {
     private long maxTime;
     private Pattern timeregexPattern;
     private String utc_pattern;
+    private SimpleDateFormat dateFormat;
     
     // Fuer das Instantiieren dieser Klasse mittels reflect im Observer
     // wird ein Leer-Konstruktor benÃ¶tigt
@@ -170,7 +170,7 @@ public class DefaultLayerImport implements ILayerImport {
                     if (matcher.find()) {
                         final String match = matcher.group();
                         try {
-                            Date timestamp = getTimeFormat(DefaultLayerImport.this.utc_pattern).parse(match);
+                            Date timestamp = DefaultLayerImport.this.dateFormat.parse(match);
                             if (dateType) {
                                 long days = timestamp.getTime() / (24 * 3600 * 1000);
                                 timestamp = new Date(days * 24 * 3600 * 1000);
@@ -206,7 +206,7 @@ public class DefaultLayerImport implements ILayerImport {
                     if (matcher.find()) {
                         final String match = matcher.group();
                         try {
-                            final Date timestamp = getTimeFormat(DefaultLayerImport.this.utc_pattern).parse(match);
+                            final Date timestamp = DefaultLayerImport.this.dateFormat.parse(match);
                             if (timestamp.before(new Date(maxDate.getTime() - seconds + 1))) {
                                 return true;
                             }
@@ -239,7 +239,7 @@ public class DefaultLayerImport implements ILayerImport {
                 System.out.println("DB-Import: " + filename);
                 matcher = this.timeregexPattern.matcher(filename);
                 if (matcher.find()) {
-                    timestamp = getTimeFormat(this.utc_pattern).parse(matcher.group());
+                    timestamp = this.dateFormat.parse(matcher.group());
                     if (maxTime < timestamp.getTime()) {
                         maxTime = timestamp.getTime();
                     }
@@ -359,16 +359,28 @@ public class DefaultLayerImport implements ILayerImport {
      * Redefines {@link #timeregexPattern} by loading the file timeregex.properties from {@link #dir}.
      */
     private void loadTimeregex() throws FileNotFoundException, IOException {
-        File timeregexFile = new File(this.dir.getAbsolutePath() + File.separator + "timeregex.properties");
+        File indexFile = new File(this.dir.getAbsolutePath() + File.separator + "indexer.properties");
+        if (!indexFile.exists())
+            throw new FileNotFoundException("Die Datei indexer.properties wurde nicht gefunden in " + this.dir);
+        Properties indexProperties = new Properties();
+        indexProperties.load(new FileReader(indexFile));
+        String propertyCollectorsProperty = indexProperties.getProperty("PropertyCollectors");
+        int iTimestampFileNameExtractorSPI = propertyCollectorsProperty.indexOf("TimestampFileNameExtractorSPI[") + 30;
+        File timeregexFile = new File(this.dir.getAbsolutePath() + File.separator + propertyCollectorsProperty.substring(iTimestampFileNameExtractorSPI, propertyCollectorsProperty.indexOf("]", iTimestampFileNameExtractorSPI)) + ".properties");
         if (!timeregexFile.exists())
-            timeregexFile = new File(this.dir.getAbsolutePath() + File.separator + "regex.properties");
-        if (!timeregexFile.exists())
-            throw new FileNotFoundException("Sowohl timeregex.properties als auch regex.properties nicht gefunden in " + this.dir);
+            throw new FileNotFoundException("Die Datei " + timeregexFile.getName() + " wurde nicht gefunden in " + this.dir);
         FileReader timeregexFileReader = new FileReader(timeregexFile);
         Properties timeregexProperties = new Properties();
         timeregexProperties.load(timeregexFileReader);
-        String timeregex = timeregexProperties.getProperty("regex").replaceFirst(",[a-z,A-Z]*=.*", "");
+        String timeregex = timeregexProperties.getProperty("regex");
         if (timeregex != null) {
+            String[] timeregexSplit = timeregex.split(",format=");
+            if (timeregexSplit.length > 1) {
+                timeregex = timeregex.replaceFirst(",[a-z,A-Z]*=.*", "");
+                this.utc_pattern = timeregexSplit[1];
+            }
+            else
+                this.utc_pattern = timeregexProperties.getProperty("format", UTC_DEFAULT_PATTERN);
             if (timeregex.startsWith(".*"))
                 timeregex = timeregex.substring(2);
             if (timeregex.endsWith(".*"))
@@ -377,7 +389,9 @@ public class DefaultLayerImport implements ILayerImport {
         }
         else
             this.timeregexPattern = TIMEREGEX_DEFAULT_PATTERN;
-        this.utc_pattern = timeregexProperties.getProperty("format", UTC_DEFAULT_PATTERN).replaceFirst(",[a-z,A-Z]*=.*", "");
+        this.dateFormat = new SimpleDateFormat(this.utc_pattern);
+        this.dateFormat.setTimeZone(UTC_TIME_ZONE);
+        System.out.println("Zeitstempel-Format aus " + timeregexFile.getAbsolutePath() + " ausgelesen: " + this.timeregexPattern.pattern() + " -> " + this.utc_pattern);
     }
     
     // public methods
@@ -484,14 +498,5 @@ public class DefaultLayerImport implements ILayerImport {
 
     public void setLocalJsonpPath(String localJsonpPath) {
         this.localJsonpPath = localJsonpPath;
-    }
-    
-    /**
-     * Returns a {@link SimpleDateFormat} using the UTC_DEFAULT_PATTERN and the UTC time zone
-     */
-    public SimpleDateFormat getTimeFormat(String utc_pattern) {
-        final SimpleDateFormat df = new SimpleDateFormat(utc_pattern);
-        df.setTimeZone(UTC_TIME_ZONE);
-        return df;
     }
 }

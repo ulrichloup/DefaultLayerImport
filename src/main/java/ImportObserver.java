@@ -11,16 +11,20 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+
 import java.text.SimpleDateFormat;
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,6 +33,9 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.Properties;
 
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 /**
  * Event-basierte Ueberwachung aller Import-Verzeichnisse einer Kategorie.
  *
@@ -685,6 +692,32 @@ public class ImportObserver {
     }
 
     public static void main(String[] args) throws IOException, ClassNotFoundException, SQLException {
+        
+        System.out.println("Testprogram");
+        System.out.println("Time ([0-9]{10}).*,format=yyMMddHHmm");
+        SimpleDateFormat df = new SimpleDateFormat("yyMMddHHmm");
+        System.out.println(df);
+        //System.out.println(df.parse("2004011300"));
+        Properties indexProperties = new Properties();
+        indexProperties.load(new FileReader(new File("indexer.properties")));
+        String propertyCollectorsProperty = indexProperties.getProperty("PropertyCollectors");
+        int iTimestampFileNameExtractorSPI = propertyCollectorsProperty.indexOf("TimestampFileNameExtractorSPI[") + 30;
+        System.out.println(propertyCollectorsProperty);
+        System.out.println(propertyCollectorsProperty.substring(iTimestampFileNameExtractorSPI, propertyCollectorsProperty.indexOf("]", iTimestampFileNameExtractorSPI)));
+        
+        File timeregexFile = new File("regex.properties");
+        FileReader timeregexFileReader = new FileReader(timeregexFile);
+        Properties timeregexProperties = new Properties();
+        timeregexProperties.load(timeregexFileReader);
+        
+        
+        System.out.println("regex=" + timeregexProperties.getProperty("regex"));
+        System.out.println("format=" + timeregexProperties.getProperty("regex").split(",format=")[0]);
+        System.out.println("format=" + timeregexProperties.getProperty("regex").split(",format=")[1]);
+        System.out.println("format=" + timeregexProperties.getProperty("regex").split(",format=")[2]);
+        System.out.println("/Testprogram");
+        System.exit(0);
+        
         if (args.length < 2) {
             System.out.println("Fehler beim Aufruf: Kategorie und Pfad des Konfigurationsverzeichnisses uebergeben!");
             printUsage();
